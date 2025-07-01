@@ -1,20 +1,36 @@
 from datetime import datetime
+import logging
 from typing import TypedDict
+
+from django.conf import settings
 from django.db import transaction
 from django.db.models import QuerySet
 from django.contrib.auth import get_user_model
 
-from db.models import Order, Ticket
+from db.models import Order, Ticket, User
+
+
+logger = logging.getLogger(__name__)
 
 
 class OrderFields(TypedDict, total=False):
-    user: get_user_model()
+    user: User
     created_at: datetime
+
+
+class TicketData(TypedDict):
+    movie_session: int
+    row: int
+    seat: int
+
+
+def parse_date_str(date_str: str) -> datetime:
+    return datetime.strptime(date_str, "%Y-%m-%d %H:%M")
 
 
 @transaction.atomic
 def create_order(
-    tickets: list[dict[str, int]],
+    tickets: list[TicketData],
     username: str,
     date: str | datetime | None = None,
 ) -> Order:
@@ -26,7 +42,7 @@ def create_order(
 
     if date is not None:
         if isinstance(date, str):
-            date = datetime.strptime(date, "%Y-%m-%d %H:%M")
+            date = parse_date_str(date)
         order_fields["created_at"] = date
 
     order = Order.objects.create(**order_fields)
@@ -37,6 +53,12 @@ def create_order(
             order=order,
             row=ticket["row"],
             seat=ticket["seat"],
+        )
+
+    if settings.DEBUG:
+        logger.info(
+            f"Order {order.id} created for user {username!r} "
+            f"with {len(tickets)} ticket(s)"
         )
 
     return order
